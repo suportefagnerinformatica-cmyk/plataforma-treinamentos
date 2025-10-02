@@ -1,18 +1,32 @@
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+// Verificação segura das variáveis de ambiente
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-  auth: {
-    autoRefreshToken: true,
-    persistSession: true,
-    detectSessionInUrl: true
-  }
-});
+// Criar cliente apenas se as variáveis estiverem definidas
+export const supabase = supabaseUrl && supabaseAnonKey 
+  ? createClient(supabaseUrl, supabaseAnonKey, {
+      auth: {
+        autoRefreshToken: true,
+        persistSession: true,
+        detectSessionInUrl: true
+      }
+    })
+  : null;
+
+// Função helper para verificar se o Supabase está configurado
+export const isSupabaseConfigured = () => {
+  return Boolean(supabaseUrl && supabaseAnonKey && supabase);
+};
 
 // Função para criar as tabelas do banco de dados
 export const createTables = async () => {
+  if (!isSupabaseConfigured()) {
+    console.warn('Supabase não configurado - pulando criação de tabelas');
+    return;
+  }
+
   const queries = [
     // Tabela de usuários (estende auth.users)
     `
@@ -148,16 +162,25 @@ export const createTables = async () => {
     `
   ];
 
-  for (const query of queries) {
-    const { error } = await supabase.rpc('exec_sql', { sql: query });
-    if (error) {
-      console.error('Erro ao criar tabela:', error);
+  try {
+    for (const query of queries) {
+      const { error } = await supabase!.rpc('exec_sql', { sql: query });
+      if (error) {
+        console.error('Erro ao criar tabela:', error);
+      }
     }
+  } catch (error) {
+    console.error('Erro geral ao criar tabelas:', error);
   }
 };
 
 // Políticas de segurança RLS (Row Level Security)
 export const setupRLS = async () => {
+  if (!isSupabaseConfigured()) {
+    console.warn('Supabase não configurado - pulando configuração RLS');
+    return;
+  }
+
   const policies = [
     // Habilitar RLS em todas as tabelas
     'ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;',
@@ -207,10 +230,14 @@ export const setupRLS = async () => {
     );`
   ];
 
-  for (const policy of policies) {
-    const { error } = await supabase.rpc('exec_sql', { sql: policy });
-    if (error && !error.message.includes('already exists')) {
-      console.error('Erro ao criar política:', error);
+  try {
+    for (const policy of policies) {
+      const { error } = await supabase!.rpc('exec_sql', { sql: policy });
+      if (error && !error.message.includes('already exists')) {
+        console.error('Erro ao criar política:', error);
+      }
     }
+  } catch (error) {
+    console.error('Erro geral ao configurar RLS:', error);
   }
 };
